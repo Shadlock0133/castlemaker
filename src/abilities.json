@@ -1,0 +1,31 @@
+{
+    "abilities": [
+        {"name": "Acrobatics", "key_attributes": "Dex", "untrained": true, "acp": true},
+        {"name": "Appraise", "key_attributes": "Int", "untrained": true, "acp": false},
+        {"name": "Bluff", "key_attributes": "Cha", "untrained": true, "acp": false},
+        {"name": "Climb", "key_attributes": "Str", "untrained": true, "acp": true},
+        {"name": "Craft()", "key_attributes": "Int", "untrained": true, "acp": false},
+        {"name": "Diplomacy", "key_attributes": "Cha", "untrained": true, "acp": false},
+        {"name": "Disable Device", "key_attributes": "Dex", "untrained": false, "acp": true},
+        {"name": "Disguise", "key_attributes": "Cha", "untrained": true, "acp": false},
+        {"name": "Escape Artist", "key_attributes": "Dex", "untrained": true, "acp": true},
+        {"name": "Fly", "key_attributes": "Dex", "untrained": true, "acp": true},
+        {"name": "Handle Animal", "key_attributes": "Cha", "untrained": false, "acp": false},
+        {"name": "Heal", "key_attributes": "Wis", "untrained": true, "acp": false},
+        {"name": "Intimidate", "key_attributes": "Cha", "untrained": true, "acp": false},
+        {"name": "Knowledge()", "key_attributes": "Int", "untrained": false, "acp": false},
+        {"name": "Linguistics", "key_attributes": "Int", "untrained": false, "acp": false},
+        {"name": "Perception", "key_attributes": "Wis", "untrained": true, "acp": false},
+        {"name": "Perform()", "key_attributes": "Cha", "untrained": true, "acp": false},
+        {"name": "Profession()", "key_attributes": "Wis", "untrained": false, "acp": false},
+        {"name": "Ride", "key_attributes": "Dex", "untrained": true, "acp": true},
+        {"name": "Sense Motive", "key_attributes": "Wis", "untrained": true, "acp": false},
+        {"name": "Sleight of Hand", "key_attributes": "Dex", "untrained": false, "acp": true},
+        {"name": "Spellcraft", "key_attributes": "Int", "untrained": false, "acp": false},
+        {"name": "Stealth", "key_attributes": "Dex", "untrained": true, "acp": true},
+        {"name": "Survival", "key_attributes": "Wis", "untrained": true, "acp": false},
+        {"name": "Swim", "key_attributes": "Str", "untrained": true, "acp": true},
+        {"name": "Use Magic Device", "key_attributes": "Cha", "untrained": false, "acp": false},
+        {"name": "Heal", "key_attributes": "Wis", "untrained": true, "acp": false}
+    ]
+}

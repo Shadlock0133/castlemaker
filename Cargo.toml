@@ -1,0 +1,12 @@
+[package]
+name = "castlemaker"
+version = "0.1.0"
+authors = ["Shadlock0133 <tomek-kubel2@wp.pl>"]
+edition = "2018"
+
+[dependencies]
+minifb = "0.11.2"
+rand = "0.6.5"
+smush = "0.1.4"
+serde = { version = "1.0.87", features = ["derive"] }
+rmp-serde = "0.13.7"
