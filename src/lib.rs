@@ -1,11 +1,19 @@
 mod countermap;
+//mod char;
 
-use serde::{Deserialize, Serialize};
 use countermap::*;
+use rmp_serde::{Serializer, Deserializer};
+use serde::{Serialize, Deserialize};
+use smush::{decode, encode, Encoding, Quality};
+use tokio::{
+    io,
+    net::TcpStream,
+    prelude::*,
+};
 use std::{
-    collections::{HashMap, HashSet},
     error::Error,
-    fmt::{self, Display},
+    io::Cursor,
+    fmt::{self, Debug, Display},
     ops::{Index, IndexMut},
 };
 
@@ -17,6 +25,30 @@ type MapId = usize;
 type EntityId = usize;
 type PlayerId = usize;
 type Pos = (u16, u16);
+
+pub fn send_packet<T: Serialize>(stream: &mut TcpStream, packet: T) -> Result<(), Fail> {
+    eprint!("sending... ");
+    let mut serialized = vec![];
+    packet.serialize(&mut Serializer::new(&mut serialized))?;
+    let compressed = encode(&serialized, Encoding::Lz4, Quality::Default)?;
+    stream.write_all(&compressed)?;
+    stream.flush()?;
+    eprintln!("done");
+    Ok(())
+}
+
+pub fn receive_packet<'de, T: Deserialize<'de>>(stream: &mut TcpStream) -> Result<Option<T>, Fail> {
+    eprint!("receiving... ");
+    let mut buffer = vec![];
+    io::copy(stream, &mut Cursor::new(buffer))
+        .and_then(|| {
+            let decompressed = decode(&buffer, Encoding::Lz4).unwrap();
+            let mut de = Deserializer::new(Cursor::new(decompressed));
+            let res = Deserialize::deserialize(&mut de).unwrap();
+            eprintln!("done");
+            Ok(Some(res))
+        }).wait()
+}
 
 #[derive(Serialize, Deserialize)]
 pub enum FromServer {
@@ -31,8 +63,8 @@ pub enum Dir {
 
 #[derive(Serialize, Deserialize)]
 pub enum FromClient {
-    Handshake,
     MoveDir(Dir),
+    Noop,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -56,81 +88,36 @@ impl World {
         self.maps
             .get_mut(&map_id)
             .and_then(|m| m.add_entity(pos, b'P'))
-            .and_then(|entity_id| {
-                let player_id = self.players.len();
+            .map(|entity_id| {
                 self.players
-                    .insert(
-                        player_id,
+                    .push(
                         Player {
                             name: name.into(),
                             map_id,
                             entity_id,
                         },
                     )
-                    .map(|_| player_id)
             })
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entity {
     pos: Pos,
     sprite: u8,
-    character: Char,
+    //name: String,
+    //character: Char,
 }
 
 impl Entity {
     pub fn new(pos: Pos, sprite: u8) -> Self {
         Self {
-            pos, sprite, character: Char::default(),
+            pos, sprite, //character: Char::default(),
         }
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize)]
-pub struct Char {
-    hp: u16,
-    class: Class,
-}  
-
-impl Char {
-    pub fn base_attack_bonus(&self) -> u8 {
-        0
-    }
-}
-
-#[derive(Clone, Default, Serialize, Deserialize)]
-pub struct Class {
-    name: String,
-    hit_die: u8,
-    skills: Vec<Skill>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Skill {
-    name: String,
-    properties: HashSet<Attribute>,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Ability {
-    name: String,
-    key_attribute: Attribute,
-    untrained: bool,
-    armor_check_penalty: bool,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Attribute {
-    #[serde(rename = "Str")] Strength,
-    #[serde(rename = "Dex")] Dexterity,
-    #[serde(rename = "Con")] Constitution,
-    #[serde(rename = "Int")] Intelligence,
-    #[serde(rename = "Wis")] Wisdom,
-    #[serde(rename = "Cha")] Charisma,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Player {
     pub name: String,
     pub map_id: MapId,
@@ -166,10 +153,21 @@ impl Map {
     }
 
     pub fn add_entity(&mut self, pos: Pos, sprite: u8) -> Option<EntityId> {
-        if self[pos] == Tile::Ground {
-            self.entities.push(Entity::new(pos, sprite))
+        let occupied = self.entities.values().find(|v| v.pos == pos).is_some();
+        if self[pos] == Tile::Ground && !occupied {
+            Some(self.entities.push(Entity::new(pos, sprite)))
         } else {
             None
+        }
+    }
+    
+    pub fn move_entity(&mut self, entity_id: EntityId, dir: Dir) {
+        let (old_x, old_y) = self.entities[&entity_id].pos;
+        self.entities.get_mut(&entity_id).unwrap().pos = match dir {
+            Dir::Up => (old_x, old_y - 1),
+            Dir::Down => (old_x, old_y + 1),
+            Dir::Left => (old_x - 1, old_y),
+            Dir::Right => (old_x + 1, old_y),
         }
     }
 }
@@ -193,9 +191,10 @@ impl Display for Map {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for y in 0..self.height {
             for x in 0..self.width {
-                let entity = self.entities.iter()
-                    .find(|(_, v)| v.pos == (x, y))
-                    .map(|(_, v)| v.sprite as char);
+                let entity = self.entities.values()
+                    .find(|v| v.pos == (x, y))
+                    .map(|v| v.sprite as char);
+
                 let ch = if let Some(ch) = entity {
                     ch
                 } else {
@@ -215,13 +214,19 @@ impl Display for Map {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+impl Debug for Map {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MapLoc {
     pub map_id: MapId,
     pub pos: Pos,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Tile {
     Ground,
     Wall,

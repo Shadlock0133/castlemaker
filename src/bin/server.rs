@@ -1,55 +1,68 @@
 use castlemaker::*;
-use rmp_serde::{Serializer, Deserializer};
-use serde::{Serialize, Deserialize};
-use smush::{decode, encode, Encoding, Quality};
-use std::{
-    io::{self, Read, Write},
-    net::*,
-    sync::{Arc, RwLock},
-    thread,
+use std::sync::{Arc, RwLock};
+use tokio::{
+    io,
+    net::{TcpListener, TcpStream},
+    prelude::*,
 };
 
 type SharedWorld = Arc<RwLock<World>>;
 
-fn send_packet(stream: &mut TcpStream, packet: FromServer) -> Result<(), Fail> {
-    let mut serialized = vec![];
-    packet.serialize(&mut Serializer::new(&mut serialized))?;
-    let compressed = encode(&serialized, Encoding::Lz4, Quality::Default)?;
-    stream.write_all(&compressed)?;
-    Ok(())
-}
-
-fn receive_packet(stream: &mut TcpStream) -> Result<FromClient, Fail> {
-    let mut buffer = vec![];
-    io::copy(stream, &mut buffer)?;
-    let decompressed = decode(&buffer, Encoding::Lz4)?;
-    let mut de = Deserializer::new(io::Cursor::new(decompressed));
-    Ok(Deserialize::deserialize(&mut de)?)
-}
-
 fn handle_client(mut stream: TcpStream, world: SharedWorld) -> Result<(), Fail> {
-    world.write().unwrap().add_player(
-        "Lolz",
-        MapLoc {
-            map_id: 0,
-            pos: (2, 3),
-        },
-    );
-    println!("client handled");
-    send_packet(&mut stream, FromServer::SendWorld(world.read().unwrap().clone()))?;
-    Ok(())
+    let player_id = {
+        world
+            .write()
+            .unwrap()
+            .add_player(
+                "Lolz",
+                MapLoc {
+                    map_id: 0,
+                    pos: (2, 3),
+                },
+            )
+            .ok_or(Box::new(io::Error::from(io::ErrorKind::Other)))?
+    };
+    println!("player {} joined", player_id);
+    send_packet::<FromServer>(
+        &mut stream,
+        FromServer::SendWorld(world.read().unwrap().clone()),
+    )?;
+    loop {
+        match receive_packet::<FromClient>(&mut stream)? {
+            Some(FromClient::MoveDir(dir)) => {
+                println!("got to Move");
+                let Player {
+                    map_id, entity_id, ..
+                } = world.read().unwrap().players[&player_id];
+                world
+                    .write()
+                    .unwrap()
+                    .maps
+                    .get_mut(&map_id)
+                    .ok_or("lols")?
+                    .move_entity(entity_id, dir);
+            }
+            None => (),
+            _ => panic!("unknown packet"),
+        }
+        send_packet::<FromServer>(
+            &mut stream,
+            FromServer::SendWorld(world.read().unwrap().clone()),
+        )?;
+    }
 }
 
 fn main() {
+    let listener =
+        TcpListener::bind(&("127.0.0.1:4335".parse().unwrap())).expect("tcplistener bind error");
+
     let world = Arc::new(RwLock::new(World::new()));
-    let listener = TcpListener::bind("127.0.0.1:4335")
-        .expect("tcplistener bind error");
     println!("Server started");
-    for stream in listener.incoming() {
+    listener.incoming().for_each(|stream| {
         let new_world = Arc::clone(&world);
-        thread::spawn(move || {
-            handle_client(stream.expect("client error"), new_world).unwrap();
+        tokio::spawn(move || {
+            handle_client(stream, new_world).unwrap();
         });
-    }
+    });
     println!("Server closed");
 }

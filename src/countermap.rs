@@ -16,7 +16,7 @@ impl Counter for usize {
     fn inc(&mut self) -> Self { let ret = *self; *self += 1; ret }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CounterMap<K, V> where K: Eq + Hash {
     hashmap: HashMap<K, V>,
     counter: K,
@@ -30,9 +30,10 @@ impl<K: Counter + Eq + Hash + Clone, V> CounterMap<K, V> {
         }
     }
 
-    pub fn push(&mut self, value: V) -> Option<K> {
+    pub fn push(&mut self, value: V) -> K {
         let key = self.counter.inc();
-        self.hashmap.insert(key.clone(), value).map(|_| key)
+        self.hashmap.insert(key.clone(), value);
+        key
     }
 }
 

@@ -10,3 +10,4 @@ rand = "0.6.5"
 smush = "0.1.4"
 serde = { version = "1.0.87", features = ["derive"] }
 rmp-serde = "0.13.7"
+tokio = "0.1.15"

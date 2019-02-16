@@ -1,33 +1,11 @@
 use castlemaker::*;
-use smush::{decode, encode, Encoding, Quality};
-use rmp_serde::{Serializer, Deserializer};
-use serde::{Serialize, Deserialize};
-use std::{
-    io::{self, Read, Write},
-    net::*,
-};
-
-fn send_packet(stream: &mut TcpStream, packet: FromClient) -> Result<(), Fail> {
-    let mut serialized = vec![];
-    packet.serialize(&mut Serializer::new(&mut serialized))?;
-    let compressed = encode(&serialized, Encoding::Lz4, Quality::Default)?;
-    stream.write_all(&compressed)?;
-    Ok(())
-}
-
-fn receive_packet(stream: &mut TcpStream) -> Result<FromServer, Fail> {
-    let mut buffer = vec![];
-    io::copy(stream, &mut buffer)?;
-    let decompressed = decode(&buffer, Encoding::Lz4)?;
-    let mut de = Deserializer::new(io::Cursor::new(decompressed));
-    Ok(Deserialize::deserialize(&mut de)?)
-}
+use tokio::{io, net::TcpStream, prelude::*};
 
 fn get_world(stream: &mut TcpStream) -> Result<World, Fail> {
-    if let FromServer::SendWorld(world) = receive_packet(stream)? {
-        Ok(world)
-    } else {
-        Err(io::Error::from(io::ErrorKind::InvalidInput).into())
+    match receive_packet::<FromServer>(stream)? {
+        Some(FromServer::SendWorld(world)) => Ok(world),
+        None => Err::<_, io::Error>(io::ErrorKind::TimedOut.into())?,
+        _ => Err::<_, io::Error>(io::ErrorKind::InvalidInput.into())?,
     }
 }
 
@@ -38,4 +16,10 @@ fn main() {
         println!("id {}: {}", id, player.name);
     }
     println!("{}", world.maps[&0]);
+    for _ in 0..2 {
+        println!("move");
+        send_packet::<FromClient>(&mut stream, FromClient::MoveDir(Dir::Right)).unwrap();
+        world = get_world(&mut stream).unwrap();
+        println!("{}", world.maps[&0]);
+    }
 }
